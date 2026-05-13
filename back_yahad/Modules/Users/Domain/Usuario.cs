@@ -1,14 +1,11 @@
+namespace back_yahad.Modules.Users.Domain;
+
 public class Usuario
 {
     public int Id { get; set; }
-
     public string Nome { get; set; } = string.Empty;
-
     public string Email { get; set; } = string.Empty;
-
     public string SenhaHash { get; set; } = string.Empty;
-
     public int RoleId { get; set; }
-
-    public Role Role { get; set; }
+    public Role? Role { get; set; }
 }
