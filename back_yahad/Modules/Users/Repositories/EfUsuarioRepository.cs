@@ -49,4 +49,9 @@ public class EfUsuarioRepository : IUsuarioRepository
         await _db.SaveChangesAsync(ct);
         return true;
     }
+
+    public Task<Usuario?> GetByEmailAsync(string email, CancellationToken ct = default)
+    {
+        return _db.Usuarios.Include(u => u.Role).FirstOrDefaultAsync(u => u.Email.ToLower() == email.ToLower(),ct);
+    }
 }

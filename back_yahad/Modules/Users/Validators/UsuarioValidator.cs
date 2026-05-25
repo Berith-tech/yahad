@@ -6,10 +6,10 @@ namespace back_yahad.Modules.Users.Validators;
 public static class UsuarioValidator
 {
     public static async Task<Dictionary<string, string[]>> ValidarCriacaoAsync(
-        UsuarioCreateDto dto,
-        IUsuarioRepository usuarios,
-        IRoleRepository roles,
-        CancellationToken ct)
+    UsuarioCreateDto dto,
+    IUsuarioRepository usuarios,
+    IRoleRepository roles,
+    CancellationToken ct)
     {
         var erros = new Dictionary<string, string[]>();
 
@@ -24,7 +24,8 @@ public static class UsuarioValidator
         if (string.IsNullOrWhiteSpace(dto.Senha) || dto.Senha.Length < 6)
             erros["Senha"] = ["A senha deve ter no mínimo 6 caracteres."];
 
-        if (await roles.GetByIdAsync(dto.RoleId, ct) is null)
+        var roleId = dto.RoleId ?? 1;
+        if (await roles.GetByIdAsync(roleId, ct) is null)
             erros["RoleId"] = ["Role inexistente."];
 
         return erros;

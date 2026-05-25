@@ -1,5 +1,4 @@
-using System.Security.Cryptography;
-using System.Text;
+using BCrypt.Net;
 
 namespace back_yahad.Shared.Utils;
 
@@ -7,7 +6,11 @@ public static class PasswordHasher
 {
     public static string Hash(string senha)
     {
-        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(senha));
-        return Convert.ToHexString(bytes);
+        return BCrypt.Net.BCrypt.HashPassword(senha);
+    }
+
+    public static bool Verify(string senha, string senhaHash)
+    {
+        return BCrypt.Net.BCrypt.Verify(senha, senhaHash);
     }
 }
