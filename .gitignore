@@ -90,3 +90,12 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
+
+# ---------- Claude Code / IA ----------
+.claude/
+.claude-code/
+CLAUDE.local.md
+**/CLAUDE.local.md
+task.md
+.aider*
+.cursor/
