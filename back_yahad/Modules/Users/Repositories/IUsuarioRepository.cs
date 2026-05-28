@@ -11,4 +11,5 @@ public interface IUsuarioRepository
     Task<bool> UpdateAsync(int id, Usuario usuario, CancellationToken ct = default);
     Task<bool> DeleteAsync(int id, CancellationToken ct = default);
     Task<Usuario?> GetByEmailAsync(string email, CancellationToken ct = default);
+    Task<bool> UpdatePasswordAsync(int id, string senhaHash, CancellationToken ct = default);
 }

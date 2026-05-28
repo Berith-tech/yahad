@@ -1,3 +1,4 @@
+using back_yahad.Modules.Auth.Domain;
 using back_yahad.Modules.Users.Domain;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,6 +10,7 @@ public class AppDbContext : DbContext
 
     public DbSet<Usuario> Usuarios => Set<Usuario>();
     public DbSet<Role> Roles => Set<Role>();
+    public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -35,6 +37,20 @@ public class AppDbContext : DbContext
                 .WithMany(r => r.Usuarios)
                 .HasForeignKey(u => u.RoleId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<PasswordResetToken>(e =>
+        {
+            e.ToTable("password_reset_tokens");
+            e.HasKey(t => t.Id);
+            e.Property(t => t.Id).HasColumnName("id").UseIdentityByDefaultColumn();
+            e.Property(t => t.UserId).HasColumnName("user_id").IsRequired();
+            e.Property(t => t.Token).HasColumnName("token").HasMaxLength(256).IsRequired();
+            e.Property(t => t.ExpiresAt).HasColumnName("expires_at").IsRequired();
+            e.Property(t => t.Used).HasColumnName("used").IsRequired().HasDefaultValue(false);
+            e.Property(t => t.CreatedAt).HasColumnName("created_at").IsRequired()
+                .HasDefaultValueSql("now()");
+            e.HasIndex(t => t.Token).IsUnique();
         });
     }
 }

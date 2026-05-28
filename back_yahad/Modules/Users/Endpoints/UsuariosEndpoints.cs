@@ -12,12 +12,13 @@ public static class UsuariosEndpoints
 {
     public static IEndpointRouteBuilder MapUsuariosEndpoints(this IEndpointRouteBuilder app)
     {
-        var grupo = app.MapGroup("/usuarios").WithTags("Usuarios").RequireAuthorization(); //-> para testar funcionamento do token
+        var grupo = app.MapGroup("/usuarios").WithTags("Usuarios");
+        var protegido = grupo.MapGroup("").RequireAuthorization();
 
-        grupo.MapGet("/", async (IUsuarioRepository repo, CancellationToken ct) =>
+        protegido.MapGet("/", async (IUsuarioRepository repo, CancellationToken ct) =>
             Results.Ok((await repo.GetAllAsync(ct)).Select(ToResponse)));
 
-        grupo.MapGet("/{id:int}", async (int id, IUsuarioRepository repo, CancellationToken ct) =>
+        protegido.MapGet("/{id:int}", async (int id, IUsuarioRepository repo, CancellationToken ct) =>
             await repo.GetByIdAsync(id, ct) is { } u ? Results.Ok(ToResponse(u)) : Results.NotFound());
 
         grupo.MapPost("/", async (UsuarioCreateDto dto, IUsuarioRepository repo, IRoleRepository roles, JwtTokenService jwtService, CancellationToken ct) =>
@@ -53,7 +54,7 @@ public static class UsuariosEndpoints
             });
         });
 
-        grupo.MapPut("/{id:int}", async (int id, UsuarioUpdateDto dto, IUsuarioRepository repo, IRoleRepository roles, CancellationToken ct) =>
+        protegido.MapPut("/{id:int}", async (int id, UsuarioUpdateDto dto, IUsuarioRepository repo, IRoleRepository roles, CancellationToken ct) =>
         {
             if (await repo.GetByIdAsync(id, ct) is null) return Results.NotFound();
 
@@ -69,7 +70,7 @@ public static class UsuariosEndpoints
             return Results.NoContent();
         });
 
-        grupo.MapDelete("/{id:int}", async (int id, IUsuarioRepository repo, CancellationToken ct) =>
+        protegido.MapDelete("/{id:int}", async (int id, IUsuarioRepository repo, CancellationToken ct) =>
             await repo.DeleteAsync(id, ct) ? Results.NoContent() : Results.NotFound());
 
         return app;

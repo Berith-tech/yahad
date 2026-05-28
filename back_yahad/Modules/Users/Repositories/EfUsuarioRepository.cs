@@ -50,8 +50,15 @@ public class EfUsuarioRepository : IUsuarioRepository
         return true;
     }
 
-    public Task<Usuario?> GetByEmailAsync(string email, CancellationToken ct = default)
+    public Task<Usuario?> GetByEmailAsync(string email, CancellationToken ct = default) =>
+        _db.Usuarios.Include(u => u.Role).FirstOrDefaultAsync(u => u.Email.ToLower() == email.ToLower(), ct);
+
+    public async Task<bool> UpdatePasswordAsync(int id, string senhaHash, CancellationToken ct = default)
     {
-        return _db.Usuarios.Include(u => u.Role).FirstOrDefaultAsync(u => u.Email.ToLower() == email.ToLower(),ct);
+        var existing = await _db.Usuarios.FindAsync([id], ct);
+        if (existing is null) return false;
+        existing.SenhaHash = senhaHash;
+        await _db.SaveChangesAsync(ct);
+        return true;
     }
 }
