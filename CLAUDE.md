@@ -10,7 +10,7 @@ Você está trabalhando no **Yahad**, uma plataforma modular para organização 
 | Backend | ASP.NET Core 10 — Minimal API |
 | ORM | Entity Framework Core 10 (Npgsql) |
 | Banco | PostgreSQL local, porta 5432 |
-| Auth | JWT (pendente) |
+| Auth | JWT |
 
 ## Estrutura do repositório
 
@@ -43,10 +43,12 @@ yahad/
 
 - CRUD `/roles` e `/usuarios`: ✅ implementado
 - Hash de senha SHA-256: ✅ implementado
-- Autenticação JWT: ⏳ pendente
+- Autenticação JWT (`POST /auth/login`): ✅ implementado
+- Reset de senha via email (Resend): ✅ implementado — `POST /auth/forgot-password` e `POST /auth/reset-password`
+- Tela de reset de senha (Angular): ✅ implementado — `/reset-password`
 - Módulo EBD (turmas, presença, lições): ⏳ não iniciado
 
-> Não implemente JWT, BCrypt ou módulo EBD sem uma task correspondente em `tasks/`.
+> Não implemente BCrypt ou módulo EBD sem uma task correspondente em `tasks/`.
 
 ## Como trabalhar
 

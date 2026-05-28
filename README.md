@@ -12,36 +12,48 @@ O Yahad é uma plataforma modular para organização da Escola Bíblica Dominica
 - **Backend**: ASP.NET Core 10 — Minimal API
 - **ORM**: Entity Framework Core 10 (provider Npgsql)
 - **Banco de Dados**: PostgreSQL (servidor local, porta 5432)
-- **Serviços auxiliares**: Python para automações e IA
+- **Email transacional**: Resend (reset de senha)
 
 ## 3. Autenticação e Segurança
 
-A autenticação será baseada em **JWT** (JSON Web Token). O backend gerará tokens assinados após login válido.
+Autenticação baseada em **JWT** (JSON Web Token).
 
-- Todas as requisições protegidas exigirão o header `Authorization: Bearer <token>`.
-- Autorização baseada em papéis: **Administrador**, **Superintendente de EBD**, **Professor**.
-- Senhas armazenadas como **hash** (SHA-256 hoje, evolução planejada para BCrypt/Argon2). O texto puro nunca é persistido.
-
-> Status atual: hash de senha implementado. Endpoint de login + emissão/validação de JWT ainda **pendentes**.
+- Login via `POST /auth/login` — retorna `{ token }` assinado com HMAC-SHA256.
+- Todas as requisições protegidas exigem o header `Authorization: Bearer <token>`.
+- Claims no token: `sub` (userId), `email`, `role`.
+- Tokens expiram em **2 horas**.
+- Senhas armazenadas como hash **SHA-256**. O texto puro nunca é persistido.
+- Fluxo de reset de senha via email (Resend): token aleatório de 64 bytes hex, expira em 60 minutos (configurável), gravado na tabela `password_reset_tokens`, invalidado após uso.
 
 ## 4. Backend (.NET)
 
-Responsável pelas regras de negócio, controle de acesso, persistência e orquestração de serviços.
+Arquitetura: **Minimal API** com módulos separados por domínio em `Modules/`.
 
-Arquitetura adotada: **Minimal API** com separação por responsabilidade dentro do `Program.cs`:
-
-- **DTOs** (`records`) — contratos de entrada/saída desacoplados das entities. Garante que campos sensíveis (ex.: `SenhaHash`) nunca vazem no JSON.
-- **Entities** — classes em `models/` (`Usuario`, `Role`).
-- **DbContext** (`AppDbContext`) — mapeamento Fluent API com `snake_case` nas colunas, índices únicos e relacionamento `Usuario → Role` com `OnDelete(Restrict)`.
-- **Repositórios** (`IRoleRepository`, `IUsuarioRepository`) — abstração sobre o EF Core; permite trocar implementação (ex.: Dapper para hotspots) sem mexer nos endpoints.
-- **Endpoints agrupados** via `MapGroup` em extension methods (`MapRolesEndpoints`, `MapUsuariosEndpoints`).
-- **Validação** inline com `Results.ValidationProblem` (Problem Details RFC 7807).
+- **DTOs** (`records`) — contratos de entrada/saída desacoplados das entidades. Campos sensíveis (ex.: `SenhaHash`) nunca aparecem no JSON.
+- **Entidades** — classes de domínio em `Modules/<Dominio>/Domain/`.
+- **DbContext** (`AppDbContext`) em `Infrastructure/Persistence/` — mapeamento Fluent API com `snake_case` nas colunas.
+- **Repositórios** — interface em `Modules/<Dominio>/Repositories/`, implementação prefixada `Ef` no mesmo pacote.
+- **Endpoints** — extension methods em `Modules/<Dominio>/Endpoints/`, registrados no `Program.cs`.
+- **Validação** via `Results.ValidationProblem` (Problem Details RFC 7807).
 - **Async** ponta a ponta com `CancellationToken`.
 
-### 4.1. Endpoints atuais
+### 4.1. Endpoints
 
 #### Health
 - `GET /` → `{ status: "ok", servico: "yahad-api" }`
+
+#### Auth (`/auth`)
+| Método | Rota | Descrição | Auth |
+|---|---|---|---|
+| POST | `/auth/login` | Autentica usuário e retorna JWT | Pública |
+| POST | `/auth/forgot-password` | Dispara email de reset de senha | Pública |
+| POST | `/auth/reset-password` | Redefine senha com token válido | Pública |
+
+**`POST /auth/login`** — corpo: `{ email, password }` → resposta: `{ token }`
+
+**`POST /auth/forgot-password`** — corpo: `{ email }` → sempre retorna 200 (resposta genérica para não revelar existência de email)
+
+**`POST /auth/reset-password`** — corpo: `{ token, newPassword }` → 200 ou 400 se token inválido/expirado
 
 #### Roles (`/roles`)
 | Método | Rota | Descrição |
@@ -61,26 +73,39 @@ Arquitetura adotada: **Minimal API** com separação por responsabilidade dentro
 | PUT | `/usuarios/{id}` | Atualiza dados (não altera senha) |
 | DELETE | `/usuarios/{id}` | Remove usuário |
 
-Regras de validação (POST/PUT de usuário): `Nome` e `Email` obrigatórios, email único, senha mínima de 6 caracteres no POST, `RoleId` deve existir.
-
 ### 4.2. Estrutura de pastas
 
 ```
 back_yahad/
-├── Program.cs                  # Minimal API completa (DI, DbContext, repos, endpoints)
+├── Program.cs
 ├── back_yahad.csproj
-├── appsettings.json            # ConnectionStrings:Default
-├── appsettings.Development.json
-├── models/
-│   ├── RoleModel.cs
-│   └── UsuarioModel.cs
-├── Migrations/                 # geradas pelo dotnet ef
-└── Properties/launchSettings.json
+├── appsettings.json
+├── appsettings.Local.example.json   # template de config local
+├── Infrastructure/
+│   ├── DependencyInjection/         # extensões de registro no DI
+│   └── Persistence/
+│       └── AppDbContext.cs
+├── Migrations/
+├── Modules/
+│   ├── Auth/
+│   │   ├── Domain/PasswordResetToken.cs
+│   │   ├── DTOs/                    # LoginRequest, LoginResponse, ForgotPasswordRequest, ResetPasswordRequest
+│   │   ├── Endpoints/AuthEndpoints.cs
+│   │   ├── Extensions/              # AddAuthModule, AddAuthenticationModule
+│   │   ├── Repositories/            # IPasswordResetTokenRepository, EfPasswordResetTokenRepository
+│   │   └── Services/                # AuthService, JwtTokenService, IEmailService, ResendEmailService
+│   └── Users/
+│       ├── Domain/                  # Usuario, Role
+│       ├── Endpoints/
+│       ├── Repositories/            # IUsuarioRepository, EfUsuarioRepository
+│       └── UsersModule.cs
+└── Shared/
+    └── Utils/PasswordHasher.cs
 ```
 
 ## 5. Banco de Dados
 
-Banco PostgreSQL relacional, com separação lógica por igreja (multi-tenant lógico) prevista para fases futuras.
+PostgreSQL relacional. Versionamento via EF Core Migrations.
 
 ### 5.1. Schema atual
 
@@ -99,104 +124,179 @@ Banco PostgreSQL relacional, com separação lógica por igreja (multi-tenant l�
 | senha_hash | `varchar(256)` | NOT NULL |
 | role_id | `integer` | NOT NULL, FK → `roles.id` (`ON DELETE RESTRICT`) |
 
-Versionamento de schema via **EF Core Migrations** (pasta `Migrations/`).
+**`password_reset_tokens`**
+| Coluna | Tipo | Constraints |
+|---|---|---|
+| id | `serial` | PK |
+| user_id | `integer` | NOT NULL |
+| token | `varchar(256)` | NOT NULL, único |
+| expires_at | `timestamptz` | NOT NULL |
+| used | `boolean` | NOT NULL, default `false` |
+| created_at | `timestamptz` | NOT NULL, default `now()` |
 
-## 6. Como subir o ambiente local
+### 5.2. Migrations aplicadas
+| Migration | Descrição |
+|---|---|
+| `first-migration` | Schema inicial: `roles` + `usuarios` |
+| `AddPasswordResetTokens` | Tabela `password_reset_tokens` |
 
-### 6.1. Pré-requisitos
+## 6. Frontend (Angular)
+
+SPA Angular com roteamento standalone.
+
+### 6.1. Estrutura de pastas
+
+```
+front_yahad/src/app/
+├── core/
+│   └── services/
+│       ├── auth.service.ts        # forgotPassword, resetPassword, login
+│       └── user.service.ts
+├── home/
+│   ├── home.component.ts
+│   └── components/welcome-banner/
+├── reset-password/
+│   ├── reset-password.component.ts
+│   └── components/reset-password-form/
+└── app.routes.ts
+```
+
+### 6.2. Rotas disponíveis
+| Rota | Componente | Descrição |
+|---|---|---|
+| `/home` | `HomeComponent` | Página inicial |
+| `/reset-password` | `ResetPasswordComponent` | Formulário de reset de senha |
+
+### 6.3. Serviços
+- `AuthService` — consome `/auth/forgot-password` e `/auth/reset-password`. URL base via `environment.apiUrl`.
+- `UserService` — consome `/usuarios`.
+
+### 6.4. Ambiente
+
+O arquivo `src/environments/environment.ts` define `apiUrl` (padrão: `http://localhost:5014`). Não versionar arquivos de ambiente com URLs de produção.
+
+## 7. Como subir o ambiente local
+
+### 7.1. Pré-requisitos
 - .NET SDK 10
-- PostgreSQL acessível (container ou nativo) em `localhost:5432`
+- Node.js 20+ e Angular CLI (`npm install -g @angular/cli`)
+- PostgreSQL acessível em `localhost:5432`
+- Conta Resend com API Key (para testar o fluxo de reset de senha)
 - CLI do EF Core: `dotnet tool install --global dotnet-ef`
 
-### 6.2. Configuração
+### 7.2. Configuração do backend
 
-Credenciais de banco **não** ficam no `appsettings.json`. Use uma das opções abaixo:
+Credenciais **não** ficam no `appsettings.json`. Use `appsettings.Local.json`:
 
-**Opção A — `appsettings.Local.json` (recomendada para dev):**
-
-Copie o template e preencha com seus dados:
 ```bash
 cp back_yahad/appsettings.Local.example.json back_yahad/appsettings.Local.json
 ```
 
-Edite `back_yahad/appsettings.Local.json`:
+Edite com seus dados:
+
 ```json
 {
   "ConnectionStrings": {
     "Default": "Host=localhost;Port=5432;Database=yahadDb;Username=SEU_USUARIO;Password=SUA_SENHA"
+  },
+  "Jwt": {
+    "Key": "CHAVE_COM_NO_MINIMO_32_CARACTERES",
+    "Issuer": "yahad-api",
+    "Audience": "yahad-client"
+  },
+  "Resend": {
+    "ApiKey": "re_SUA_API_KEY",
+    "FromEmail": "onboarding@resend.dev",
+    "FromName": "Yahad"
+  },
+  "PasswordReset": {
+    "ExpirationMinutes": 60,
+    "BaseUrl": "http://localhost:4200"
   }
 }
 ```
 
-Esse arquivo é carregado automaticamente pelo `Program.cs` e está no `.gitignore` — não será commitado.
+> `appsettings.Local.json` está no `.gitignore` e nunca será commitado.
 
-**Opção B — variável de ambiente (recomendada para produção):**
-
-```bash
-export ConnectionStrings__Default="Host=...;Port=5432;Database=yahadDb;Username=...;Password=..."
-```
-
-> Em hipótese alguma comitar credenciais reais em `appsettings.json` ou `appsettings.Development.json`. Esses dois arquivos são versionados.
-
-### 6.3. Aplicar migrations
+### 7.3. Aplicar migrations
 
 ```bash
 cd back_yahad
 dotnet ef database update
 ```
 
-### 6.4. Rodar a API
+### 7.4. Rodar a API
 
 ```bash
 cd back_yahad
 dotnet run
 ```
 
-API sobe em `http://localhost:5014`.
+API sobe em `http://localhost:5014`. Swagger disponível em `http://localhost:5014/swagger`.
 
-### 6.5. Smoke test
+### 7.5. Rodar o frontend
+
+```bash
+cd front_yahad
+npm install
+ng serve
+```
+
+Frontend sobe em `http://localhost:4200`.
+
+### 7.6. Smoke tests
 
 ```bash
 # 1) Cria roles
 curl -X POST http://localhost:5014/roles -H "Content-Type: application/json" -d '{"nome":"admin"}'
 curl -X POST http://localhost:5014/roles -H "Content-Type: application/json" -d '{"nome":"usuario"}'
 
-# 2) Cria usuário de teste
+# 2) Cria usuário
 curl -X POST http://localhost:5014/usuarios \
   -H "Content-Type: application/json" \
-  -d '{"nome":"João Teste","email":"joao.teste@yahad.dev","senha":"senha123","roleId":2}'
+  -d '{"nome":"João Teste","email":"joao@yahad.dev","senha":"senha123","roleId":1}'
 
-# 3) Lista
-curl http://localhost:5014/usuarios
+# 3) Login → retorna JWT
+curl -X POST http://localhost:5014/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"joao@yahad.dev","password":"senha123"}'
+
+# 4) Dispara email de reset de senha
+curl -X POST http://localhost:5014/auth/forgot-password \
+  -H "Content-Type: application/json" \
+  -d '{"email":"joao@yahad.dev"}'
 ```
 
-## 7. Serviços em Python
+## 8. Status do projeto
 
-Utilizados para automações, processamento assíncrono e integrações com IA. Comunicação com o backend via HTTP ou mensageria futura.
+| Feature | Status |
+|---|---|
+| CRUD `/roles` | ✅ |
+| CRUD `/usuarios` | ✅ |
+| Hash de senha (SHA-256) | ✅ |
+| Autenticação JWT | ✅ |
+| Reset de senha via email (Resend) | ✅ |
+| Tela de reset de senha (Angular) | ✅ |
+| Módulo EBD (turmas, presença, lições) | ⏳ não iniciado |
 
-## 8. Mensageria (Futuro)
-
-Planejada para comunicação assíncrona, eventos de sistema e tarefas em background.
-
-## 9. Infraestrutura
-
-Servidor local hospedando banco de dados, APIs .NET, serviços Python e futuramente mensageria.
-
-## 10. Princípios de Arquitetura
+## 9. Princípios de Arquitetura
 
 Modularidade, segurança, escalabilidade gradual, baixa dependência e manutenção simples.
 
-## 11. Evolução Planejada
+## 10. Histórico
 
-- **Curto prazo**: autenticação JWT (login + middleware), troca de hash para BCrypt, fluxo de "esqueci minha senha".
-- **Médio prazo**: módulo EBD funcional (turmas, presença, lições), automações e relatórios.
-- **Longo prazo**: mensageria, IA e novos módulos da igreja.
-
-## 12. Histórico recente
+**2026-05-28 — Auth completo + frontend inicial**
+- JWT login (`POST /auth/login`) implementado com `JwtTokenService` e `AuthService`.
+- Fluxo de reset de senha: `POST /auth/forgot-password` envia email via Resend; `POST /auth/reset-password` valida token e redefine senha.
+- Nova entidade `PasswordResetToken` e migration `AddPasswordResetTokens`.
+- Repositório `IPasswordResetTokenRepository` / `EfPasswordResetTokenRepository`.
+- Métodos `UpdatePasswordAsync` e `GetByEmailAsync` adicionados em `IUsuarioRepository`.
+- Backend refatorado para estrutura modular em `Modules/`.
+- Frontend: `HomeComponent`, `ResetPasswordComponent`, `AuthService`, `UserService`, `environment.ts`.
+- CORS configurado para `http://localhost:4200`.
 
 **2026-05-03 — Backend inicial**
-- Minimal API em `back_yahad/Program.cs` com endpoints CRUD de `/roles` e `/usuarios`.
-- Integração EF Core 10 + Npgsql apontando para PostgreSQL local.
-- Primeira migration (`first-migration`) aplicada — schema `roles` + `usuarios` criado.
-- Hash de senha (SHA-256) e DTOs de resposta sem exposição de `SenhaHash`.
-- Validação de unicidade de email e existência de Role na criação/atualização de usuário.
+- Minimal API com endpoints CRUD de `/roles` e `/usuarios`.
+- Integração EF Core 10 + Npgsql.
+- Primeira migration (`first-migration`) — schema `roles` + `usuarios`.
+- Hash de senha (SHA-256) e DTOs sem exposição de `SenhaHash`.

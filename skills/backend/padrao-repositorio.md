@@ -3,9 +3,10 @@
 ## Estrutura
 
 ```
-Infrastructure/
-├── Interfaces/INomeDominioRepository.cs
-└── Repositories/NomeDominioRepository.cs
+Modules/<Dominio>/
+└── Repositories/
+    ├── INomeDominioRepository.cs
+    └── EfNomeDominioRepository.cs
 ```
 
 ## Interface
@@ -43,10 +44,12 @@ public class NomeDominioRepository(AppDbContext ctx) : INomeDominioRepository
 }
 ```
 
-## Registro no Program.cs
+## Registro no DI
+
+Registre via extension method em `Modules/<Dominio>/` ou em `Infrastructure/DependencyInjection/`:
 
 ```csharp
-builder.Services.AddScoped<INomeDominioRepository, NomeDominioRepository>();
+builder.Services.AddScoped<INomeDominioRepository, EfNomeDominioRepository>();
 ```
 
 ## Regras

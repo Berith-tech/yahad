@@ -7,10 +7,10 @@
 - [ ] O DTO de resposta expõe campos sensíveis?
 
 ## Passos
-1. Crie ou abra `Modules/<Dominio>Module.cs` com extension method `Map<Dominio>Endpoints`
+1. Crie `Modules/<Dominio>/Endpoints/<Dominio>Endpoints.cs` com extension method `Map<Dominio>Endpoints`
 2. Registre no `Program.cs`: `app.Map<Dominio>Endpoints()`
-3. Crie DTOs em `Shared/DTOs/` como `record`
-4. Implemente handlers privados com validação via `Results.ValidationProblem`
+3. Crie DTOs como `record` em `Modules/<Dominio>/DTOs/`
+4. Implemente handlers com validação via `Results.ValidationProblem`
 5. Rode `dotnet build`
 
 ## Códigos HTTP
